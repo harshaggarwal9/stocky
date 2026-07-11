@@ -27,13 +27,11 @@ class CustomLogger:
         if self.logger.handlers:
             return
 
-        # 创建一个handler用于写入日志文件
         file_handler = logging.FileHandler(self.log_file, encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
         plain_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(plain_formatter)
 
-        # 创建一个handler用于输出到控制台（带有颜色）
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.DEBUG)
         colored_formatter = ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')

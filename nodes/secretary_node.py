@@ -1,11 +1,9 @@
 import json
 import re
 from shared_state import MarketState
-from secretary import Secretary        # original rule-based secretary for format checks
+from secretary import Secretary
 from log.custom_logger import log
 
-
-# ─── Prompt ──────────────────────────────────────────────────────────────────
 
 AI_SECRETARY_SYSTEM = """You are a professional trade compliance officer at a stock brokerage.
 Your role is to review investor trade orders and decide whether to approve or reject them.
@@ -50,7 +48,6 @@ Respond ONLY with this JSON:
 
 
 def _build_prompt(state: MarketState) -> str:
-    """Build AI secretary prompt."""
     decision = state.get("investor_decision", {"action_type": "no"})
     action_type = decision.get("action_type", "no")
     portfolio = state.get("portfolio", {})
@@ -103,7 +100,6 @@ def _call_llm(prompt: str, model_runner) -> str:
 
 
 def _parse_approval(raw: str) -> dict:
-    """Parse approval decision from LLM response."""
     defaults = {
         "approved": False,
         "reason": "Rejected because the AI secretary response could not be parsed.",
@@ -128,14 +124,11 @@ def _parse_approval(raw: str) -> dict:
         return defaults
 
 
-# ─── LangGraph Node ──────────────────────────────────────────────────────────
-
 def secretary_node(state: MarketState, model_runner) -> MarketState:
 
     decision = state.get("investor_decision", {"action_type": "no"})
     action_type = decision.get("action_type", "no")
 
-    # ── Fast path: "no action" is always approved ─────────────────────────
     if action_type == "no":
         sec_decision = {"approved": True, "reason": "No trade action — auto-approved."}
         log.logger.info(f"[AISecretary] Agent={state['agent_order']} -> no-action, auto-approved.")
@@ -146,11 +139,9 @@ def secretary_node(state: MarketState, model_runner) -> MarketState:
         f"Agent={state['agent_order']} — reviewing trade: {decision}"
     )
 
-    # ── Hard constraint check via original Secretary ──────────────────────
-    # (ensures format and financial feasibility — these rules are inviolable)
     portfolio = state.get("portfolio", {})
-    orig_secretary = Secretary.__new__(Secretary)  # lightweight instance
-    orig_secretary.model = "dummy"                 # not used for check_action
+    orig_secretary = Secretary.__new__(Secretary)
+    orig_secretary.model = "dummy"
 
     format_ok, fail_reason, _ = orig_secretary.check_action(
         resp=json.dumps(decision),
@@ -162,7 +153,6 @@ def secretary_node(state: MarketState, model_runner) -> MarketState:
     )
 
     if not format_ok:
-        # Hard constraint violated — reject immediately, no LLM needed
         sec_decision = {
             "approved": False,
             "reason": f"Hard constraint violation: {fail_reason}",
@@ -172,7 +162,6 @@ def secretary_node(state: MarketState, model_runner) -> MarketState:
         )
         return {**state, "secretary_decision": sec_decision}
 
-    # ── AI review for soft/strategic approval ─────────────────────────────
     prompt = _build_prompt(state)
     raw_response = _call_llm(prompt, model_runner)
     sec_decision = _parse_approval(raw_response)
@@ -186,4 +175,3 @@ def secretary_node(state: MarketState, model_runner) -> MarketState:
         **state,
         "secretary_decision": sec_decision,
     }
-

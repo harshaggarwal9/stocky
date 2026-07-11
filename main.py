@@ -1,35 +1,3 @@
-"""
-main.py  (Quantix LangGraph Edition)
---------------------------------------
-Simulation Controller — migrated to Multi-AI-Agent architecture via LangGraph.
-
-Architecture:
-  Shared Market State
-       │
-       ▼
-  MarketAnalystNode (AI)    ← financial reports, prices, events, forum
-       │
-       ▼
-  RiskManagerNode (AI)      ← portfolio, loans, market analysis
-       │
-       ▼
-  InvestorNode (AI)         ← existing Agent + market/risk context
-       │
-       ▼
-  AISecretaryNode (AI)      ← replaces rule-based Secretary
-       │
-  [approved/rejected?]
-       │
-       ▼
-  Stock Exchange            ← UNCHANGED from original
-  Order Matching            ← UNCHANGED
-  Portfolio Manager         ← UNCHANGED
-  Price Discovery           ← UNCHANGED
-  Recorder                  ← UNCHANGED
-
-PRESERVED UNCHANGED: stock.py, record.py, util.py
-"""
-
 import argparse
 import random
 import time
@@ -48,32 +16,20 @@ from record import (
     create_agentses_record,
 )
 
-# ── NEW: LangGraph imports ──────────────────────────────────────────────────
 from shared_state import MarketState
 from graph import build_pipeline, run_pipeline
 
 load_dotenv()
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#  MODEL RUNNER — unified LLM interface for all AI nodes
-# ════════════════════════════════════════════════════════════════════════════
-
 def make_model_runner(model: str):
-    """
-    Returns a callable(prompt: str) -> str that routes to the correct LLM.
-
-    All four AI nodes (Market Analyst, Risk Manager, Investor context,
-    AI Secretary) share this single runner.  The existing Agent class
-    has its own runner for its internal calls.
-    """
     def run(prompt: str) -> str:
         if "gemini" in model:
             return _run_gemini(prompt, model)
         if "gpt" in model:
             return _run_gpt(prompt, model)
         elif "gemini" in model:
-            return _run_gemini_stub(prompt)   # stub — swap with real Gemini call
+            return _run_gemini_stub(prompt)
         else:
             return _offline_gemini_response(prompt)
 
@@ -103,7 +59,6 @@ def _run_gpt(prompt: str, model: str) -> str:
 
 
 def _run_gemini(prompt: str, model: str) -> str:
-    """Run Gemini and return the JSON text expected by the graph nodes."""
     if not util.GOOGLE_API_KEY:
         log.logger.error("[ModelRunner] GOOGLE_API_KEY is not configured.")
         return ""
@@ -131,33 +86,19 @@ def _run_gemini(prompt: str, model: str) -> str:
 
 
 def _offline_gemini_response(prompt: str) -> str:
-    """
-    Stub Gemini runner — returns deterministic JSON responses for each node.
-    Replace with real Google Gemini API call when deploying.
-    """
     p = prompt.lower()
 
     if "market_sentiment" in p or "market analyst" in p or "market intelligence" in p:
-        # Market Analyst response
         return '{"market_sentiment": "neutral", "market_reasoning": "Market conditions are stable with no strong directional signals. Forum messages show mixed sentiment among traders."}'
 
     if "risk_level" in p or "risk assessment" in p or "leverage ratio" in p:
-        # Risk Manager response
         return '{"risk_level": "medium", "risk_reasoning": "Portfolio is moderately leveraged. Current market conditions do not suggest extreme risk."}'
 
     if "approved" in p or "trade compliance" in p or "approval guidelines" in p:
-        # AI Secretary response
         return '{"approved": true, "reason": "Trade is within acceptable parameters given current risk profile."}'
 
-    # Investor Agent response. A no-trade decision is intentionally used as
-    # the offline fallback: it conforms to the order schema and cannot create
-    # an invalid or unaffordable order when no LLM provider is configured.
     return '{"action_type": "no"}'
 
-
-# ════════════════════════════════════════════════════════════════════════════
-#  ORDER MATCHING — preserved exactly from original main.py
-# ════════════════════════════════════════════════════════════════════════════
 
 def get_agent(all_agents, order):
     for agent in all_agents:
@@ -167,7 +108,6 @@ def get_agent(all_agents, order):
 
 
 def handle_action(action, stock_deals, all_agents, stock, session):
-    """Identical to original main.py handle_action — zero changes."""
     try:
         if action["action_type"] == "buy":
             for sell_action in stock_deals["sell"][:]:
@@ -225,10 +165,6 @@ def handle_action(action, stock_deals, all_agents, stock, session):
         return
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#  STATE BUILDER — creates the initial MarketState for each agent per session
-# ════════════════════════════════════════════════════════════════════════════
-
 def build_initial_state(
     agent: Agent,
     date: int,
@@ -240,10 +176,6 @@ def build_initial_state(
     last_day_forum_message: list,
     current_market_events: list,
 ) -> MarketState:
-    """
-    Construct the MarketState dict that seeds the LangGraph pipeline
-    for a single agent × session invocation.
-    """
     is_season_report = date in util.SEASON_REPORT_DAYS
     season_idx = util.SEASON_REPORT_DAYS.index(date) if is_season_report else 0
 
@@ -269,7 +201,7 @@ def build_initial_state(
         financial_reports=financial_reports,
         market_events=current_market_events,
         forum_messages=last_day_forum_message,
-        stock_a_deals=dict(stock_a_deals),   # snapshot; pipeline is read-only
+        stock_a_deals=dict(stock_a_deals),
         stock_b_deals=dict(stock_b_deals),
         market_analysis="",
         market_sentiment="neutral",
@@ -283,13 +215,8 @@ def build_initial_state(
     )
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#  MAIN SIMULATION LOOP
-# ════════════════════════════════════════════════════════════════════════════
-
 def simulation(args):
-    # ── Init (same as original) ─────────────────────────────────────────
-    from secretary import Secretary   # kept for agent.__init__ compatibility
+    from secretary import Secretary
     secretary = Secretary(args.model)
 
     stock_a = Stock("A", util.STOCK_A_INITIAL_PRICE, 0, is_new=False)
@@ -305,7 +232,6 @@ def simulation(args):
             f"stock b: {agent.stock_b_amount}, debt: {agent.loans}"
         )
 
-    # ── Create shared model runner for the AI nodes ─────────────────────
     model_runner = make_model_runner(args.model)
 
     last_day_forum_message = []
@@ -322,7 +248,6 @@ def simulation(args):
         stock_b_deals["buy"].clear()
         stock_b_deals["sell"].clear()
 
-        # ── Daily pre-session bookkeeping (unchanged) ──────────────────
         for agent in all_agents[:]:
             agent.chat_history.clear()
             agent.loan_repayment(date)
@@ -338,7 +263,6 @@ def simulation(args):
                     agent.quit = True
                     all_agents.remove(agent)
 
-        # ── Market events (unchanged) ──────────────────────────────────
         current_market_events = []
         if date == util.EVENT_1_DAY:
             util.LOAN_RATE = util.EVENT_1_LOAN_RATE
@@ -349,13 +273,11 @@ def simulation(args):
             last_day_forum_message.append({"name": -1, "message": util.EVENT_2_MESSAGE})
             current_market_events.append(util.EVENT_2_MESSAGE)
 
-        # ── Loan planning (uses existing Agent.plan_loan — unchanged) ──
         daily_agent_records = []
         for agent in all_agents:
             loan = agent.plan_loan(date, stock_a.get_price(), stock_b.get_price(), last_day_forum_message)
             daily_agent_records.append(AgentRecordDaily(date, agent.order, loan))
 
-        # ── Trading sessions ───────────────────────────────────────────
         for session in range(1, util.TOTAL_SESSION + 1):
             log.logger.debug(f"SESSION {session}")
             sequence = list(range(len(all_agents)))
@@ -364,9 +286,6 @@ def simulation(args):
             for i in sequence:
                 agent = all_agents[i]
 
-                # ── BUILD LangGraph pipeline for this agent ────────────
-                # Pipeline is rebuilt each invocation so per-agent
-                # state (stock objects) is correctly captured.
                 pipeline = build_pipeline(
                     model_runner=model_runner,
                     agent=agent,
@@ -374,7 +293,6 @@ def simulation(args):
                     stock_b=stock_b,
                 )
 
-                # ── BUILD initial state ────────────────────────────────
                 initial_state = build_initial_state(
                     agent=agent,
                     date=date,
@@ -387,15 +305,10 @@ def simulation(args):
                     current_market_events=current_market_events,
                 )
 
-                # ══ RUN the LangGraph pipeline ═════════════════════════
-                #   MarketAnalyst → RiskManager → Investor → AISecretary
                 final_state = run_pipeline(pipeline, initial_state)
-                # ══════════════════════════════════════════════════════
 
-                # ── Extract the (possibly overridden) action ───────────
                 action = final_state["investor_decision"]
 
-                # ── Record agent session stats (unchanged) ─────────────
                 proper, cash, valua_a, value_b = agent.get_proper_cash_value(
                     stock_a.get_price(), stock_b.get_price()
                 )
@@ -403,7 +316,6 @@ def simulation(args):
                     agent.order, date, session, proper, cash, valua_a, value_b, action
                 )
 
-                # ── Submit to Stock Exchange (unchanged) ───────────────
                 action["agent"] = agent.order
                 action["date"] = date
                 if action["action_type"] != "no":
@@ -412,12 +324,10 @@ def simulation(args):
                     else:
                         handle_action(action, stock_b_deals, all_agents, stock_b, session)
 
-            # ── Price Discovery (unchanged) ────────────────────────────
             stock_a.update_price(date)
             stock_b.update_price(date)
             create_stock_record(date, session, stock_a.get_price(), stock_b.get_price())
 
-        # ── End-of-day estimation (unchanged) ─────────────────────────
         for idx, agent in enumerate(all_agents):
             estimation = agent.next_day_estimate()
             log.logger.info(f"Agent {agent.order} tomorrow estimation: {estimation}")
@@ -427,7 +337,6 @@ def simulation(args):
             daily_agent_records[idx].write_to_excel()
         daily_agent_records.clear()
 
-        # ── Forum messages (unchanged) ─────────────────────────────────
         last_day_forum_message.clear()
         log.logger.debug(f"DAY {date} ends, display forum messages...")
         for agent in all_agents:
@@ -437,8 +346,6 @@ def simulation(args):
 
     log.logger.debug("--------Simulation finished! (LangGraph Edition)--------")
 
-
-# ════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Quantix LangGraph Multi-Agent Simulation")

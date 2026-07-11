@@ -9,37 +9,29 @@ from nodes.secretary_node import secretary_node
 from log.custom_logger import log
 
 
-# ─── Node factory functions ────────────────────────────────────────────────
-
 def make_market_analyst(model_runner: Callable) -> Callable:
-    """Return a LangGraph-compatible node for the Market Analyst."""
     def _node(state: MarketState) -> MarketState:
         return market_analyst_node(state, model_runner)
     return _node
 
 
 def make_risk_manager(model_runner: Callable) -> Callable:
-    """Return a LangGraph-compatible node for the Risk Manager."""
     def _node(state: MarketState) -> MarketState:
         return risk_manager_node(state, model_runner)
     return _node
 
 
 def make_investor(agent, stock_a, stock_b) -> Callable:
-    """Return a LangGraph-compatible node for the Investor Agent."""
     def _node(state: MarketState) -> MarketState:
         return investor_node(state, agent, stock_a, stock_b)
     return _node
 
 
 def make_secretary(model_runner: Callable) -> Callable:
-    """Return a LangGraph-compatible node for the AI Secretary."""
     def _node(state: MarketState) -> MarketState:
         return secretary_node(state, model_runner)
     return _node
 
-
-# ─── Conditional edge ──────────────────────────────────────────────────────
 
 def route_after_secretary(state: MarketState) -> str:
 
@@ -51,10 +43,6 @@ def route_after_secretary(state: MarketState) -> str:
 
 
 def rejection_override_node(state: MarketState) -> MarketState:
-    """
-    If the AI Secretary rejected the trade, override investor_decision to
-    a safe no-action so main.py never executes the rejected trade.
-    """
     original = state.get("investor_decision", {})
     reason = state.get("secretary_decision", {}).get("reason", "Unknown rejection reason.")
     log.logger.warning(
@@ -67,8 +55,6 @@ def rejection_override_node(state: MarketState) -> MarketState:
     }
 
 
-# ─── Graph builder ─────────────────────────────────────────────────────────
-
 def build_pipeline(
     model_runner: Callable,
     agent,
@@ -78,36 +64,30 @@ def build_pipeline(
 
     graph = StateGraph(MarketState)
 
-    # ── Register nodes ──────────────────────────────────────────────────
     graph.add_node("market_analyst",  make_market_analyst(model_runner))
     graph.add_node("risk_manager",    make_risk_manager(model_runner))
     graph.add_node("investor",        make_investor(agent, stock_a, stock_b))
     graph.add_node("ai_secretary",    make_secretary(model_runner))
     graph.add_node("rejection_override", rejection_override_node)
 
-    # ── Entry point ─────────────────────────────────────────────────────
     graph.set_entry_point("market_analyst")
 
-    # ── Sequential edges ────────────────────────────────────────────────
     graph.add_edge("market_analyst", "risk_manager")
     graph.add_edge("risk_manager",   "investor")
     graph.add_edge("investor",       "ai_secretary")
 
-    # ── Conditional edge after Secretary ────────────────────────────────
     graph.add_conditional_edges(
         "ai_secretary",
         route_after_secretary,
         {
-            "approved": END,                 # Trade proceeds to main.py execution
-            "rejected": "rejection_override", # Trade is cancelled
+            "approved": END,
+            "rejected": "rejection_override",
         }
     )
     graph.add_edge("rejection_override", END)
 
     return graph.compile()
 
-
-# ─── Convenience runner ────────────────────────────────────────────────────
 
 def run_pipeline(compiled_graph, initial_state: MarketState) -> MarketState:
 

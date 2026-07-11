@@ -1,66 +1,10 @@
-"""
-prompt/agent_prompt.py
------------------------
-All Investor Agent prompt templates — Procoder-free.
-
-Replaces these Procoder constructs with plain Python:
-  (name, content) block         → (title, content) tuple  +  build_prompt()
-  Named variable (refname, name, content) → (title, content) tuple  +  ref_map dict
-  Block collection                → build_prompt(*sections, ref_map=...)
-    produces ## N. Title headers with double-newline separation
-  format_prompt(template, inputs)   → format_prompt(str, dict)
-
-Public API used by agent.py (same names where possible):
-  build_prompt(*sections, ref_map)   — assemble a numbered prompt
-  format_prompt(template, inputs)    — substitute {placeholders} from inputs
-  SECTION_*                          — (title, content) tuples for each block
-  LOAN_REF_MAP, FINANCIAL_REF_MAP    — pre-built cross-reference dicts
-  DECIDE_BUY_STOCK_PROMPT            — pre-rendered standalone block (string)
-  LOAN_RETRY_PROMPT                  — pre-rendered standalone block (string)
-  BUY_STOCK_RETRY_PROMPT             — pre-rendered standalone block (string)
-  POST_MESSAGE_PROMPT                — pre-rendered standalone block (string)
-  NEXT_DAY_ESTIMATE_PROMPT           — pre-rendered standalone block (string)
-  NEXT_DAY_ESTIMATE_RETRY            — pre-rendered standalone block (string)
-"""
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  HELPERS
-# ══════════════════════════════════════════════════════════════════════════════
-
 def _resolve_refs(content: str, ref_map: dict) -> str:
-    """
-    Substitute {refname} cross-references using simple str.replace.
-
-    Why str.replace and NOT str.format_map:
-      format_map (and format) consume {{ and }} immediately, turning them into
-      { and }.  That breaks the JSON-example escape sequences (e.g. {{"loan":"yes"}})
-      before the final format_prompt call can handle them correctly.
-      str.replace only touches the exact token "{refname}" and leaves every
-      other {…} and {{…}} sequence completely intact.
-    """
     for refname, value in ref_map.items():
         content = content.replace("{" + refname + "}", value)
     return content
 
 
 def build_prompt(*sections: tuple, ref_map: dict = None) -> str:
-    """
-    Replaces:
-      numbered multi-section prompt with sharp2-style ## N. Title headers
-
-    Parameters
-    ----------
-    *sections : (title: str, content: str)  — one tuple per named block
-    ref_map   : {refname: content_str}      — resolves cross-references
-                 e.g. {loan_type_prompt} inside one block is replaced with
-                 the content of the Loan Type block before final formatting.
-
-    Returns
-    -------
-    A numbered, double-newline-separated string:
-      ## 1. Title\\ncontent\\n\\n## 2. Title\\ncontent ...
-    """
     ref_map = ref_map or {}
     parts = []
     for i, (title, content) in enumerate(sections, 1):
@@ -70,24 +14,9 @@ def build_prompt(*sections: tuple, ref_map: dict = None) -> str:
 
 
 def format_prompt(template: str, inputs: dict) -> str:
-    """
-    Drop-in replacement for the original format_prompt(template, inputs)
-
-    Substitutes {key} placeholders in template with values from inputs.
-    Also converts {{ → { and }} → } (Python str.format standard behaviour),
-    which is how JSON examples in the prompts are safely embedded.
-    """
     return template.format(**inputs)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  SECTION TUPLES  —  (title, content)
-#  Each tuple is one named block from the original prompt library.
-#  {placeholders} are user inputs filled by format_prompt().
-#  {{…}} are literal brace characters (JSON examples) filled by format_prompt().
-# ══════════════════════════════════════════════════════════════════════════════
-
-# ── BACKGROUND ────────────────────────────────────────────────────────────────
 SECTION_BACKGROUND = (
     "Background",
     "You are a stock trader, and next you will simulate interactions with other traders in the market.\n"
@@ -95,7 +24,6 @@ SECTION_BACKGROUND = (
     "Next, please complete your trading actions according to the order.",
 )
 
-# ── LAST DAY FORUM AND STOCK ──────────────────────────────────────────────────
 SECTION_LASTDAY_FORUM = (
     "Last Day Forum and Stock",
     "After the close of trading yesterday, the stock prices of Company A and Company B \n"
@@ -103,9 +31,6 @@ SECTION_LASTDAY_FORUM = (
     "Posts by other traders on the forum are as follows: {lastday_forum_message}",
 )
 
-# ── LOAN TYPE  (refname: loan_type_prompt) ───────────────────────────────────
-# The content is also exported as _LOAN_TYPE_BODY so it can be used as a
-# cross-reference value inside SECTION_LOAN_INSTRUCTION via LOAN_REF_MAP.
 _LOAN_TYPE_BODY = (
     "0. 22days, the benchmark interest rate {loan_rate1}\n"
     "1. 44days, the benchmark interest rate {loan_rate2}\n"
@@ -114,7 +39,6 @@ _LOAN_TYPE_BODY = (
 
 SECTION_LOAN_TYPE = ("Loan Type", _LOAN_TYPE_BODY)
 
-# ── DECIDE IF LOAN  (references {loan_type_prompt} → resolved via LOAN_REF_MAP)
 SECTION_LOAN_INSTRUCTION = (
     "Instruction",
     "It is the {date} day, and your current character is {character}. \n"
@@ -129,9 +53,6 @@ SECTION_LOAN_INSTRUCTION = (
     '{{"loan" : "no"}}',
 )
 
-# ── 3-YEAR HISTORICAL FINANCIAL DATA  (refname: first_day_financial_prompt) ──
-# All numbers — no {placeholders}.  Inlined into SECTION_BACKGROUND_KNOWLEDGE
-# via FINANCIAL_REF_MAP when build_prompt is called.
 _FINANCIAL_3Y_BODY = (
     "The following lists the financial data for the past three years, "
     "covering a total of twelve quarters.\n"
@@ -160,7 +81,6 @@ SECTION_3Y_FINANCIAL = (
     _FINANCIAL_3Y_BODY,
 )
 
-# ── BACKGROUND KNOWLEDGE  (references {first_day_financial_prompt}) ───────────
 SECTION_BACKGROUND_KNOWLEDGE = (
     "The initial financial situation of Stock A and B",
     "Company A has been listed for 10 years, deeply rooted in the chemical industry. "
@@ -185,8 +105,6 @@ SECTION_BACKGROUND_KNOWLEDGE = (
     "The last 3 years financial report of stock A and B is listed in {first_day_financial_prompt}.",
 )
 
-# ── SEASONAL FINANCIAL REPORT  (refname: seasonal_financial_report) ──────────
-# {stock_a_report} and {stock_b_report} are filled by format_prompt() from inputs.
 _SEASONAL_BODY = "Stock A: {stock_a_report}\nStock B: {stock_b_report}"
 
 SECTION_SEASONAL_REPORT = (
@@ -194,7 +112,6 @@ SECTION_SEASONAL_REPORT = (
     _SEASONAL_BODY,
 )
 
-# ── DECIDE BUY / SELL STOCK  (used standalone AND in multi-section prompts) ─────────────
 _STOCK_INSTRUCTION_BODY = (
     "It is the {time} trading session on the {date} day, and after the previous session, \n"
     "the stock price of Company A is {stock_a_price} and the stock price of Company B is {stock_b_price}.\n"
@@ -216,35 +133,17 @@ _STOCK_INSTRUCTION_BODY = (
 
 SECTION_STOCK_INSTRUCTION = ("Instruction", _STOCK_INSTRUCTION_BODY)
 
-# Pre-rendered standalone version (matches original: prompt = DECIDE_BUY_STOCK_PROMPT).
-# Used for time > 1 in plan_stock where no multi-section wrapper is needed.
 DECIDE_BUY_STOCK_PROMPT = f"## Instruction\n{_STOCK_INSTRUCTION_BODY}"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  CROSS-REFERENCE MAPS
-#  These replace Procoder's refname mechanism.  Each key is the refname string
-#  that appears as {refname} inside a section's content; the value is the raw
-#  content string that should be substituted in its place.
-# ══════════════════════════════════════════════════════════════════════════════
-
-# Resolves {loan_type_prompt} inside SECTION_LOAN_INSTRUCTION
 LOAN_REF_MAP = {
     "loan_type_prompt": _LOAN_TYPE_BODY,
 }
 
-# Resolves {first_day_financial_prompt} inside SECTION_BACKGROUND_KNOWLEDGE
 FINANCIAL_REF_MAP = {
     "first_day_financial_prompt": _FINANCIAL_3Y_BODY,
 }
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  STANDALONE PROMPT STRINGS
-#  These are used directly with format_prompt(prompt, inputs) in agent.py.
-#  Each is the pre-rendered equivalent of a standalone prompt block:
-#    ## Name\ncontent
-# ══════════════════════════════════════════════════════════════════════════════
 
 LOAN_RETRY_PROMPT = (
     "## Instruction\n"

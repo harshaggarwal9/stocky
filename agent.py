@@ -1,11 +1,3 @@
-"""
-agent.py
----------
-Investor Agent — Procoder-free edition.
-
-Everything else — all business logic, API calls, portfolio management,
-bankruptcy handling, loan repayment — is IDENTICAL to the original.
-"""
 import math
 import time
 import openai
@@ -15,7 +7,6 @@ from google.genai import types
 import util
 from log.custom_logger import log
 
-# ── NEW: Procoder-free prompt imports ─────────────────────────────────────────
 from prompt.agent_prompt import (
     build_prompt,
     format_prompt,
@@ -88,7 +79,6 @@ class Agent:
         return ""
 
     def run_api_gemini(self, prompt, temperature: float = 1):
-        """Generate the agent response with the current Google GenAI SDK."""
         if not util.GOOGLE_API_KEY:
             log.logger.error("GOOGLE_API_KEY is not configured. Skip this Gemini interaction.")
             return ""
@@ -287,8 +277,6 @@ class Agent:
             }
 
         else:
-            # ── UNCHANGED name: prompt = DECIDE_BUY_STOCK_PROMPT
-            # (pre-rendered string — see prompt/agent_prompt.py)
             prompt = DECIDE_BUY_STOCK_PROMPT
             inputs = {
                 "date": date,

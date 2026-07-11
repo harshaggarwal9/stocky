@@ -1,26 +1,8 @@
-"""
-risk_manager_node.py
----------------------
-Risk Management AI Node
-
-Inputs  (from MarketState):
-  - market_analysis, market_sentiment (from MarketAnalystNode)
-  - portfolio, cash, loans
-  - stock_a_price, stock_b_price
-  - agent_character
-
-Outputs (written into MarketState):
-  - risk_analysis  : str  — detailed reasoning
-  - risk_level     : str  — "low" | "medium" | "high"
-"""
-
 import json
 import re
 from shared_state import MarketState
 from log.custom_logger import log
 
-
-# ─── Prompt ──────────────────────────────────────────────────────────────────
 
 RISK_MANAGER_SYSTEM = """You are a quantitative risk manager for a stock trading firm.
 Your role is to assess the financial risk of an investor's current portfolio given market conditions.
@@ -61,7 +43,6 @@ def _compute_loan_total(loans: list) -> float:
 
 
 def _build_prompt(state: MarketState) -> str:
-    """Build risk manager prompt from MarketState."""
     portfolio = state["portfolio"]
     stock_a = portfolio.get("stock_a", 0)
     stock_b = portfolio.get("stock_b", 0)
@@ -73,7 +54,6 @@ def _build_prompt(state: MarketState) -> str:
     stock_b_value = stock_b * stock_b_price
     total_assets = stock_a_value + stock_b_value + cash
 
-    # Loans summary
     loans = state.get("loans", [])
     total_loans = _compute_loan_total(loans)
     if loans and total_loans > 0:
@@ -115,7 +95,6 @@ def _call_llm(prompt: str, model_runner) -> str:
 
 
 def _parse_response(raw: str) -> dict:
-    """Parse risk level and reasoning from LLM output."""
     defaults = {
         "risk_level": "medium",
         "risk_reasoning": "Could not determine risk level; defaulting to medium.",
@@ -140,21 +119,7 @@ def _parse_response(raw: str) -> dict:
         return defaults
 
 
-# ─── LangGraph Node ──────────────────────────────────────────────────────────
-
 def risk_manager_node(state: MarketState, model_runner) -> MarketState:
-    """
-    LangGraph node: Risk Management AI.
-
-    Parameters
-    ----------
-    state        : MarketState — includes market_analysis from previous node
-    model_runner : callable(prompt: str) -> str
-
-    Returns
-    -------
-    Updated MarketState with risk_analysis and risk_level.
-    """
     log.logger.info(
         f"[RiskManager] Day={state['date']} Session={state['session']} "
         f"Agent={state['agent_order']} — running risk assessment"
@@ -179,4 +144,3 @@ def risk_manager_node(state: MarketState, model_runner) -> MarketState:
         "risk_level": result["risk_level"],
         "risk_analysis": risk_text,
     }
-
